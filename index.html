@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Professional AI Passport Photo Maker | Online ID Photo Creator</title>
+<meta name="description" content="Create, crop, and resize your passport and ID photos online with AI-powered precision. Instant download and print-ready sheets compliant with international standards.">
+<meta name="keywords" content="passport photo, online passport photo creator, ID photo maker, visa photo editor, biometric photo tool, diy passport photos, photo resizing for passport, auto face detection, passport size printing, printable passport photos">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix@2.2.0/dist/body-pix.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+.crop-handle { position: absolute; width: 14px; height: 14px; background: white; border: 2px solid #3b82f6; border-radius: 3px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); z-index: 10; }
+.crop-handle.nw { top: -7px; left: -7px; cursor: nw-resize; }
+.crop-handle.ne { top: -7px; right: -7px; cursor: ne-resize; }
+.crop-handle.sw { bottom: -7px; left: -7px; cursor: sw-resize; }
+.crop-handle.se { bottom: -7px; right: -7px; cursor: se-resize; }
+.crop-handle.n  { top: -7px; left: 50%; margin-left: -7px; cursor: n-resize; }
+.crop-handle.s  { bottom: -7px; left: 50%; margin-left: -7px; cursor: s-resize; }
+.crop-handle.e  { right: -7px; top: 50%; margin-top: -7px; cursor: e-resize; }
+.crop-handle.w  { left: -7px; top: 50%; margin-top: -7px; cursor: w-resize; }
+#cropRect { position: absolute; border: 2px solid #3b82f6; pointer-events: auto; cursor: move; }
+#cropContainer { position: relative; display: none; }
+.slider-custom { -webkit-appearance: none; width: 100%; height: 6px; background: #334155; border-radius: 4px; outline: none; }
+.slider-custom::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #3b82f6; cursor: pointer; border: 2px solid #1e293b; }
+.spinner { border: 3px solid #334155; border-top: 3px solid #3b82f6; border-radius: 50%; width: 20px; height: 20px; animation: spin 0.8s linear infinite; display: inline-block; }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+.country-btn { text-align: start; padding: 8px; border: 1px solid #334155; border-radius: 10px; cursor: pointer; transition: all 0.15s; }
+.country-btn:hover { border-color: #3b82f6; background: rgba(59,130,246,0.1); }
+.country-btn.active { border-color: #3b82f6; background: rgba(59,130,246,0.2); border-width: 2px; }
+#countryList { max-height: 250px; overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+@media (max-width:640px) { #countryList { grid-template-columns: 1fr; } }
+#aiStatus { transition: all 0.3s; }
+</style>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans antialiased selection:bg-blue-500 selection:text-white pb-16">
+
+<nav class="bg-slate-900/90 backdrop-blur-md border-b border-slate-800 sticky top-0 z-50 p-4 flex justify-between items-center shadow-lg">
+  <div class="flex items-center gap-3">
+    <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
+    <h1 class="text-xl font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-blue-500">Professional AI Passport Photo Maker</h1>
+    <span class="text-[10px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded-full font-mono border border-blue-500/20">v6.0.0</span>
+  </div>
+  <select id="langSwitcher" class="bg-slate-800 border border-slate-700 text-xs px-3 py-1.5 rounded-xl text-slate-300 outline-none cursor-pointer focus:border-blue-500">
+    <option value="en">English</option><option value="ar">العربية</option><option value="es">Español</option><option value="fr">Français</option>
+    <option value="de">Deutsch</option><option value="ru">Русский</option><option value="zh">中文</option><option value="ja">日本語</option>
+    <option value="pt">Português</option><option value="it">Italiano</option><option value="hu">Magyar</option>
+  </select>
+</nav>
+
+<main class="max-w-7xl mx-auto mt-6 p-4 grid grid-cols-1 lg:grid-cols-12 gap-6">
+  <section class="lg:col-span-8 bg-slate-800/40 border border-slate-800/80 p-6 rounded-3xl shadow-2xl space-y-5">
+    <div class="flex justify-between items-center border-b border-slate-800/60 pb-4 text-xs font-semibold text-slate-500 overflow-x-auto gap-3">
+      <span id="step-id-1" class="text-blue-400 border-b-2 border-blue-500 pb-4 -mb-4.5 transition-all">1. <span id="ui-preset">Preset</span></span>
+      <span id="step-id-2" class="transition-all">2. <span id="ui-upload2">Upload</span></span>
+      <span id="step-id-3" class="transition-all">3. <span id="ui-adjust">Adjust</span></span>
+      <span id="step-id-4" class="transition-all">4. <span id="ui-export2">Export</span></span>
+    </div>
+
+    <!-- Panel 1: Preset -->
+    <div id="panel-1" class="py-6 space-y-4">
+      <h2 class="text-2xl font-black text-center" id="ui-preset-title">Choose Document Spec</h2>
+      <input type="text" id="countrySearch" placeholder="Search country..." oninput="filterCountries()" class="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-slate-100 font-mono text-sm outline-none focus:border-blue-500 transition-colors">
+      <div id="countryList"></div>
+    </div>
+
+    <!-- Panel 2: Upload -->
+    <div id="panel-2" class="hidden py-10 text-center space-y-5">
+      <h2 class="text-2xl font-black" id="ui-upload-title">Upload Image</h2>
+      <div class="flex flex-col sm:flex-row justify-center gap-5 max-w-2xl mx-auto">
+        <div class="flex-1 border-2 border-dashed border-slate-700 hover:border-blue-500 bg-slate-800/20 rounded-2xl p-10 relative transition-all cursor-pointer">
+          <input type="file" accept="image/*" id="fileInput" onchange="handleFile(this)" class="absolute inset-0 opacity-0 cursor-pointer z-10">
+          <div class="text-4xl mb-2">📁</div>
+          <p class="text-sm font-bold text-slate-300" id="ui-drag">Upload File</p>
+        </div>
+        <div onclick="toggleCamera()" class="flex-1 border-2 border-slate-700 hover:border-emerald-500 bg-slate-800/20 rounded-2xl p-10 transition-all cursor-pointer">
+          <div class="text-4xl mb-2">📷</div>
+          <p class="text-sm font-bold text-slate-300" id="ui-camera">Camera</p>
+        </div>
+      </div>
+      <div id="cameraContainer" class="hidden max-w-md mx-auto bg-slate-950 p-2 rounded-xl border border-slate-800">
+        <video id="video" autoplay playsinline class="w-full rounded-lg"></video>
+        <div class="flex gap-2 mt-2">
+          <button onclick="capturePhoto()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-lg font-bold text-sm" id="ui-capture">📸 Capture</button>
+          <button onclick="closeCamera()" class="px-4 bg-slate-700 hover:bg-slate-600 text-white py-3 rounded-lg font-bold text-sm" id="ui-cancel-cam">✕</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel 3: Adjust -->
+    <div id="panel-3" class="hidden space-y-5">
+      <div class="relative w-full" style="min-height:420px">
+        <div class="bg-slate-950 rounded-2xl overflow-hidden flex items-center justify-center border border-slate-800 shadow-inner relative" style="min-height:420px">
+          <div id="cropContainer" style="position:relative;display:none">
+            <canvas id="mainCanvas" class="shadow-2xl block"></canvas>
+            <img id="capturedImg" style="display:none;max-width:100%" class="shadow-2xl block">
+            <div id="cropRect">
+              <div class="crop-handle nw"></div><div class="crop-handle n"></div><div class="crop-handle ne"></div>
+              <div class="crop-handle w"></div><div class="crop-handle e"></div>
+              <div class="crop-handle sw"></div><div class="crop-handle s"></div><div class="crop-handle se"></div>
+            </div>
+          </div>
+          <div id="liveBiometricBar" class="absolute bottom-3 start-3 end-3 bg-slate-800/80 border border-slate-700/50 backdrop-blur text-slate-300 text-center py-2 rounded-xl text-xs font-mono font-bold transition-all">
+            Scanning Biometrics...
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-3 bg-slate-800/20 p-4 rounded-2xl border border-slate-800/60 text-xs font-mono">
+        <div><div class="flex justify-between mb-1 text-slate-400"><span id="ui-zoom">Zoom</span><span id="valScale">1.0</span></div><input type="range" id="sliderScale" min="0.1" max="4" step="0.01" value="1" class="slider-custom"></div>
+        <div><div class="flex justify-between mb-1 text-slate-400"><span id="ui-rot">Rotation</span><span id="valRot">0°</span></div><input type="range" id="sliderRotate" min="-10" max="10" step="0.1" value="0" class="slider-custom"></div>
+        <div><div class="flex justify-between mb-1 text-slate-400"><span id="ui-x">Pan X</span><span id="valX">0</span></div><input type="range" id="sliderX" min="-400" max="400" step="1" value="0" class="slider-custom"></div>
+        <div><div class="flex justify-between mb-1 text-slate-400"><span id="ui-y">Pan Y</span><span id="valY">0</span></div><input type="range" id="sliderY" min="-400" max="400" step="1" value="0" class="slider-custom"></div>
+        <div class="border-t border-slate-700/60 pt-3"><div class="flex justify-between mb-1 text-slate-400"><span id="ui-brightness">Brightness</span><span id="valBright">100%</span></div><input type="range" id="sliderBrightness" min="0" max="200" step="1" value="100" class="slider-custom"></div>
+        <div class="border-t border-slate-700/60 pt-3"><div class="flex justify-between mb-1 text-slate-400"><span id="ui-contrast">Contrast</span><span id="valContrast">100%</span></div><input type="range" id="sliderContrast" min="0" max="200" step="1" value="100" class="slider-custom"></div>
+        <div class="sm:col-span-2 border-t border-slate-700/60 pt-3"><div class="flex justify-between mb-1 text-slate-400"><span id="ui-saturation">Saturation</span><span id="valSat">100%</span></div><input type="range" id="sliderSaturation" min="0" max="200" step="1" value="100" class="slider-custom"></div>
+      </div>
+
+      <div class="flex flex-wrap gap-2">
+        <button id="btnAiBg" onclick="removeBackgroundAI()" class="bg-purple-600 hover:bg-purple-500 text-white text-xs px-4 py-2 rounded-lg font-bold flex items-center gap-2">
+          <span id="ui-ai-bg">🧠 AI BG</span>
+          <span id="aiSpinner" class="hidden"><span class="spinner"></span></span>
+        </button>
+        <button onclick="autoFrame()" class="bg-teal-600 hover:bg-teal-500 text-white text-xs px-4 py-2 rounded-lg font-bold"><span id="ui-auto-frame">🔍 Auto Frame</span></button>
+        <button onclick="autoLevels()" class="bg-amber-600 hover:bg-amber-500 text-white text-xs px-4 py-2 rounded-lg font-bold"><span id="ui-auto-levels">🎚 Auto Levels</span></button>
+        <div id="aiStatus" class="hidden text-xs text-purple-300 bg-purple-500/10 px-3 py-1.5 rounded-lg font-medium flex items-center gap-2 border border-purple-500/20"></div>
+      </div>
+    </div>
+
+    <!-- Panel 4: Export -->
+    <div id="panel-4" class="hidden py-4 space-y-5 text-center">
+      <h2 class="text-2xl font-black" id="ui-export-title">Export Settings</h2>
+      <div class="max-w-xl mx-auto bg-slate-800/30 border border-slate-700/80 p-5 rounded-2xl text-start font-mono text-sm space-y-4">
+        <div class="grid grid-cols-2 gap-4">
+          <div><label class="block text-slate-400 mb-1.5 text-xs" id="ui-format">Format:</label>
+            <select id="exportFormat" class="w-full bg-slate-900 border border-slate-700 p-2.5 rounded-xl text-slate-100 outline-none focus:border-blue-500 text-sm">
+              <option value="jpeg">JPEG</option><option value="png">PNG</option><option value="pdf">PDF</option>
+            </select>
+          </div>
+          <div><label class="block text-slate-400 mb-1.5 text-xs" id="ui-kb">Target Size (KB):</label>
+            <input type="number" id="inputKb" value="230" class="w-full bg-slate-900 border border-slate-700 p-2.5 rounded-xl text-slate-100 outline-none focus:border-blue-500 text-sm">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div><label class="block text-slate-400 mb-1.5 text-xs" id="ui-cols">Columns:</label>
+            <input type="number" id="sheetCols" value="4" min="1" max="10" class="w-full bg-slate-900 border border-slate-700 p-2.5 rounded-xl text-slate-100 outline-none focus:border-blue-500 text-sm">
+          </div>
+          <div><label class="block text-slate-400 mb-1.5 text-xs" id="ui-rows">Rows:</label>
+            <input type="number" id="sheetRows" value="2" min="1" max="10" class="w-full bg-slate-900 border border-slate-700 p-2.5 rounded-xl text-slate-100 outline-none focus:border-blue-500 text-sm">
+          </div>
+        </div>
+        <div class="text-[11px] text-emerald-400 bg-emerald-500/5 p-3 rounded-xl border border-emerald-500/10 flex items-center gap-2">
+          <span>🔒</span> <span id="ui-meta">EXIF/GPS stripped. 100% client-side.</span>
+        </div>
+      </div>
+      <div class="flex flex-wrap justify-center gap-3 mt-3">
+        <button onclick="downloadExport()" class="bg-blue-600 hover:bg-blue-500 text-white px-5 py-3 rounded-xl font-bold text-sm shadow-lg shadow-blue-600/10" id="ui-btn-single">⬇ Download</button>
+        <button onclick="downloadPrintSheet()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-3 rounded-xl font-bold text-sm shadow-lg" id="ui-btn-sheet">⬇ 4x6 Sheet</button>
+        <button onclick="printPhoto()" class="bg-slate-600 hover:bg-slate-500 text-white px-5 py-3 rounded-xl font-bold text-sm shadow-lg" id="ui-btn-print">🖨 Print</button>
+      </div>
+    </div>
+
+    <div class="pt-4 border-t border-slate-800/60 flex justify-between">
+      <button id="btnBack" onclick="stepBack()" class="border border-slate-700 px-5 py-2 rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors hidden"><span id="ui-back">Back</span></button>
+      <button id="btnNext" onclick="stepNext()" class="bg-slate-100 text-slate-900 px-6 py-2 rounded-xl text-xs font-black hover:bg-white transition-all ms-auto hidden"><span id="ui-next">Next</span></button>
+    </div>
+  </section>
+
+  <aside class="lg:col-span-4 space-y-5">
+    <div class="bg-slate-800/40 border border-slate-800/80 p-5 rounded-3xl shadow-xl">
+      <div class="flex justify-between items-center border-b border-slate-700/80 pb-3 mb-3">
+        <h3 class="font-black text-sm text-slate-200" id="ui-audit">Biometric Audit</h3>
+        <span id="chkCounter" class="text-[10px] bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full font-mono">0/10</span>
+      </div>
+      <ul class="space-y-2 text-xs font-mono text-slate-400" id="checklistContainer">
+        <li id="chk-0">❌ <span id="lbl-0">Photo Spec Chosen</span></li>
+        <li id="chk-1">❌ <span id="lbl-1">Image Uploaded</span></li>
+        <li id="chk-2">❌ <span id="lbl-2">Head Ratio Constraints</span></li>
+        <li id="chk-3">❌ <span id="lbl-3">Studio Background Active</span></li>
+        <li id="chk-4">❌ <span id="lbl-4">Eye-Level Horizontal Tilt</span></li>
+        <li id="chk-5">❌ <span id="lbl-5">Face Isolation Validated</span></li>
+        <li id="chk-6">❌ <span id="lbl-6">No Severe Pixel Blur</span></li>
+        <li id="chk-7">❌ <span id="lbl-7">Contrast Confirmed</span></li>
+        <li id="chk-8">❌ <span id="lbl-8">Boundary Margins OK</span></li>
+        <li id="chk-9">❌ <span id="lbl-9">Professional Attire Active</span></li>
+      </ul>
+    </div>
+
+    <div class="bg-slate-800/40 border border-slate-800/80 p-5 rounded-3xl shadow-xl">
+      <h3 class="font-black text-sm text-slate-200 mb-3">Pixel Matrix</h3>
+      <canvas id="previewMatrix" class="w-full bg-slate-950 rounded-lg border border-slate-800 shadow-inner" style="height:100px;display:none"></canvas>
+      <p id="matrixInfo" class="text-[10px] text-slate-500 mt-2 font-mono">Awaiting image...</p>
+    </div>
+  </aside>
+</main>
+
+<script>
+// ===== PWA Manifest =====
+const manifestData = {
+  name:"PassportPhoto Pro", short_name:"PassportPro", start_url:".",
+  display:"standalone", background_color:"#0f172a", theme_color:"#1e40af",
+  icons:[{src:"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%231e40af'/%3E%3Ctext x='50' y='70' text-anchor='middle' fill='white' font-size='55' font-weight='bold' font-family='sans-serif'%3EP%3C/text%3E%3C/svg%3E",sizes:"512x512",type:"image/svg+xml"}]
+};
+const ml=document.createElement('link');ml.rel='manifest';ml.href='data:application/manifest+json;charset=utf-8,'+encodeURIComponent(JSON.stringify(manifestData));document.head.appendChild(ml);
+
+// ===== 119 Countries =====
+const countries = [
+  {id:"us",name:"United States",nameAr:"الولايات المتحدة",nameDe:"Vereinigte Staaten",nameRu:"США",nameZh:"美国",nameJa:"アメリカ",namePt:"Estados Unidos",nameIt:"Stati Uniti",nameHu:"Egyesült Államok",w:600,h:600,minR:50,maxR:70,bg:"#fff",desc:"2x2 in / 51x51 mm"},
+  {id:"uk",name:"United Kingdom",nameAr:"المملكة المتحدة",nameDe:"Vereinigtes Königreich",nameRu:"Великобритания",nameZh:"英国",nameJa:"イギリス",namePt:"Reino Unido",nameIt:"Regno Unito",nameHu:"Egyesült Királyság",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"ca",name:"Canada",nameAr:"كندا",nameDe:"Kanada",nameRu:"Канада",nameZh:"加拿大",nameJa:"カナダ",namePt:"Canadá",nameIt:"Canada",nameHu:"Kanada",w:591,h:827,minR:60,maxR:75,bg:"#fff",desc:"50x70 mm"},
+  {id:"au",name:"Australia",nameAr:"أستراليا",nameDe:"Australien",nameRu:"Австралия",nameZh:"澳大利亚",nameJa:"オーストラリア",namePt:"Austrália",nameIt:"Australia",nameHu:"Ausztrália",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"in",name:"India",nameAr:"الهند",nameDe:"Indien",nameRu:"Индия",nameZh:"印度",nameJa:"インド",namePt:"Índia",nameIt:"India",nameHu:"India",w:600,h:600,minR:50,maxR:70,bg:"#fff",desc:"2x2 in / 51x51 mm"},
+  {id:"de",name:"Germany",nameAr:"ألمانيا",nameDe:"Deutschland",nameRu:"Германия",nameZh:"德国",nameJa:"ドイツ",namePt:"Alemanha",nameIt:"Germania",nameHu:"Németország",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"fr",name:"France",nameAr:"فرنسا",nameDe:"Frankreich",nameRu:"Франция",nameZh:"法国",nameJa:"フランス",namePt:"França",nameIt:"Francia",nameHu:"Franciaország",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"cn",name:"China",nameAr:"الصين",nameDe:"China",nameRu:"Китай",nameZh:"中国",nameJa:"中国",namePt:"China",nameIt:"Cina",nameHu:"Kína",w:390,h:567,minR:65,maxR:80,bg:"#fff",desc:"33x48 mm"},
+  {id:"jp",name:"Japan",nameAr:"اليابان",nameDe:"Japan",nameRu:"Япония",nameZh:"日本",nameJa:"日本",namePt:"Japão",nameIt:"Giappone",nameHu:"Japán",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"kr",name:"South Korea",nameAr:"كوريا الجنوبية",nameDe:"Südkorea",nameRu:"Южная Корея",nameZh:"韩国",nameJa:"韓国",namePt:"Coreia do Sul",nameIt:"Corea del Sud",nameHu:"Dél-Korea",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"br",name:"Brazil",nameAr:"البرازيل",nameDe:"Brasilien",nameRu:"Бразилия",nameZh:"巴西",nameJa:"ブラジル",namePt:"Brasil",nameIt:"Brasile",nameHu:"Brazília",w:600,h:600,minR:50,maxR:70,bg:"#fff",desc:"2x2 in / 51x51 mm"},
+  {id:"mx",name:"Mexico",nameAr:"المكسيك",nameDe:"Mexiko",nameRu:"Мексика",nameZh:"墨西哥",nameJa:"メキシコ",namePt:"México",nameIt:"Messico",nameHu:"Mexikó",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"it",name:"Italy",nameAr:"إيطاليا",nameDe:"Italien",nameRu:"Италия",nameZh:"意大利",nameJa:"イタリア",namePt:"Itália",nameIt:"Italia",nameHu:"Olaszország",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"es",name:"Spain",nameAr:"إسبانيا",nameDe:"Spanien",nameRu:"Испания",nameZh:"西班牙",nameJa:"スペイン",namePt:"Espanha",nameIt:"Spagna",nameHu:"Spanyolország",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"ru",name:"Russia",nameAr:"روسيا",nameDe:"Russland",nameRu:"Россия",nameZh:"俄罗斯",nameJa:"ロシア",namePt:"Rússia",nameIt:"Russia",nameHu:"Oroszország",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"za",name:"South Africa",nameAr:"جنوب أفريقيا",nameDe:"Südafrika",nameRu:"ЮАР",nameZh:"南非",nameJa:"南アフリカ",namePt:"África do Sul",nameIt:"Sudafrica",nameHu:"Dél-afrikai Köztársaság",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"ng",name:"Nigeria",nameAr:"نيجيريا",nameDe:"Nigeria",nameRu:"Нигерия",nameZh:"尼日利亚",nameJa:"ナイジェリア",namePt:"Nigéria",nameIt:"Nigeria",nameHu:"Nigéria",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"pk",name:"Pakistan",nameAr:"باكستان",nameDe:"Pakistan",nameRu:"Пакистан",nameZh:"巴基斯坦",nameJa:"パキスタン",namePt:"Paquistão",nameIt:"Pakistan",nameHu:"Pakisztán",w:413,h:531,minR:60,maxR:75,bg:"#e8f0fe",desc:"35x45 mm (Blue bg)"},
+  {id:"bd",name:"Bangladesh",nameAr:"بنغلاديش",nameDe:"Bangladesch",nameRu:"Бангладеш",nameZh:"孟加拉国",nameJa:"バングラデシュ",namePt:"Bangladesh",nameIt:"Bangladesh",nameHu:"Banglades",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"ph",name:"Philippines",nameAr:"الفلبين",nameDe:"Philippinen",nameRu:"Филиппины",nameZh:"菲律宾",nameJa:"フィリピン",namePt:"Filipinas",nameIt:"Filippine",nameHu:"Fülöp-szigetek",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"th",name:"Thailand",nameAr:"تايلاند",nameDe:"Thailand",nameRu:"Таиланд",nameZh:"泰国",nameJa:"タイ",namePt:"Tailândia",nameIt:"Thailandia",nameHu:"Thaiföld",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"vn",name:"Vietnam",nameAr:"فيتنام",nameDe:"Vietnam",nameRu:"Вьетнам",nameZh:"越南",nameJa:"ベトナム",namePt:"Vietnã",nameIt:"Vietnam",nameHu:"Vietnám",w:472,h:709,minR:60,maxR:75,bg:"#fff",desc:"40x60 mm"},
+  {id:"id",name:"Indonesia",nameAr:"إندونيسيا",nameDe:"Indonesien",nameRu:"Индонезия",nameZh:"印度尼西亚",nameJa:"インドネシア",namePt:"Indonésia",nameIt:"Indonesia",nameHu:"Indonézia",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"my",name:"Malaysia",nameAr:"ماليزيا",nameDe:"Malaysia",nameRu:"Малайзия",nameZh:"马来西亚",nameJa:"マレーシア",namePt:"Malásia",nameIt:"Malaysia",nameHu:"Malajzia",w:413,h:591,minR:60,maxR:75,bg:"#d4e6f9",desc:"35x50 mm (Blue bg)"},
+  {id:"sg",name:"Singapore",nameAr:"سنغافورة",nameDe:"Singapur",nameRu:"Сингапур",nameZh:"新加坡",nameJa:"シンガポール",namePt:"Cingapura",nameIt:"Singapore",nameHu:"Szingapúr",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"ae",name:"UAE",nameAr:"الإمارات",nameDe:"VAE",nameRu:"ОАЭ",nameZh:"阿联酋",nameJa:"UAE",namePt:"EAU",nameIt:"EAU",nameHu:"EAE",w:508,h:650,minR:60,maxR:75,bg:"#fff",desc:"43x55 mm"},
+  {id:"sa",name:"Saudi Arabia",nameAr:"السعودية",nameDe:"Saudi-Arabien",nameRu:"Саудовская Аравия",nameZh:"沙特阿拉伯",nameJa:"サウジアラビア",namePt:"Arábia Saudita",nameIt:"Arabia Saudita",nameHu:"Szaúd-Arábia",w:472,h:709,minR:60,maxR:75,bg:"#fff",desc:"40x60 mm"},
+  {id:"qa",name:"Qatar",nameAr:"قطر",nameDe:"Katar",nameRu:"Катар",nameZh:"卡塔尔",nameJa:"カタール",namePt:"Catar",nameIt:"Qatar",nameHu:"Katar",w:449,h:567,minR:60,maxR:75,bg:"#fff",desc:"38x48 mm"},
+  {id:"il",name:"Israel",nameAr:"إسرائيل",nameDe:"Israel",nameRu:"Израиль",nameZh:"以色列",nameJa:"イスラエル",namePt:"Israel",nameIt:"Israele",nameHu:"Izrael",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"tr",name:"Turkey",nameAr:"تركيا",nameDe:"Türkei",nameRu:"Турция",nameZh:"土耳其",nameJa:"トルコ",namePt:"Turquia",nameIt:"Turchia",nameHu:"Törökország",w:591,h:709,minR:60,maxR:75,bg:"#fff",desc:"50x60 mm"},
+  {id:"nl",name:"Netherlands",nameAr:"هولندا",nameDe:"Niederlande",nameRu:"Нидерланды",nameZh:"荷兰",nameJa:"オランダ",namePt:"Países Baixos",nameIt:"Paesi Bassi",nameHu:"Hollandia",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"be",name:"Belgium",nameAr:"بلجيكا",nameDe:"Belgien",nameRu:"Бельгия",nameZh:"比利时",nameJa:"ベルギー",namePt:"Bélgica",nameIt:"Belgio",nameHu:"Belgium",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"ch",name:"Switzerland",nameAr:"سويسرا",nameDe:"Schweiz",nameRu:"Швейцария",nameZh:"瑞士",nameJa:"スイス",namePt:"Suíça",nameIt:"Svizzera",nameHu:"Svájc",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"at",name:"Austria",nameAr:"النمسا",nameDe:"Österreich",nameRu:"Австрия",nameZh:"奥地利",nameJa:"オーストリア",namePt:"Áustria",nameIt:"Austria",nameHu:"Ausztria",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"se",name:"Sweden",nameAr:"السويد",nameDe:"Schweden",nameRu:"Швеция",nameZh:"瑞典",nameJa:"スウェーデン",namePt:"Suécia",nameIt:"Svezia",nameHu:"Svédország",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"no",name:"Norway",nameAr:"النرويج",nameDe:"Norwegen",nameRu:"Норвегия",nameZh:"挪威",nameJa:"ノルウェー",namePt:"Noruega",nameIt:"Norvegia",nameHu:"Norvégia",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"dk",name:"Denmark",nameAr:"الدنمارك",nameDe:"Dänemark",nameRu:"Дания",nameZh:"丹麦",nameJa:"デンマーク",namePt:"Dinamarca",nameIt:"Danimarca",nameHu:"Dánia",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"fi",name:"Finland",nameAr:"فنلندا",nameDe:"Finnland",nameRu:"Финляндия",nameZh:"芬兰",nameJa:"フィンランド",namePt:"Finlândia",nameIt:"Finlandia",nameHu:"Finnország",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"pl",name:"Poland",nameAr:"بولندا",nameDe:"Polen",nameRu:"Польша",nameZh:"波兰",nameJa:"ポーランド",namePt:"Polônia",nameIt:"Polonia",nameHu:"Lengyelország",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"cz",name:"Czech Republic",nameAr:"التشيك",nameDe:"Tschechien",nameRu:"Чехия",nameZh:"捷克",nameJa:"チェコ",namePt:"República Tcheca",nameIt:"Repubblica Ceca",nameHu:"Csehország",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"gr",name:"Greece",nameAr:"اليونان",nameDe:"Griechenland",nameRu:"Греция",nameZh:"希腊",nameJa:"ギリシャ",namePt:"Grécia",nameIt:"Grecia",nameHu:"Görögország",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"pt",name:"Portugal",nameAr:"البرتغال",nameDe:"Portugal",nameRu:"Португалия",nameZh:"葡萄牙",nameJa:"ポルトガル",namePt:"Portugal",nameIt:"Portogallo",nameHu:"Portugália",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"ie",name:"Ireland",nameAr:"أيرلندا",nameDe:"Irland",nameRu:"Ирландия",nameZh:"爱尔兰",nameJa:"アイルランド",namePt:"Irlanda",nameIt:"Irlanda",nameHu:"Írország",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"hu",name:"Hungary",nameAr:"المجر",nameDe:"Ungarn",nameRu:"Венгрия",nameZh:"匈牙利",nameJa:"ハンガリー",namePt:"Hungria",nameIt:"Ungheria",nameHu:"Magyarország",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"ro",name:"Romania",nameAr:"رومانيا",nameDe:"Rumänien",nameRu:"Румыния",nameZh:"罗马尼亚",nameJa:"ルーマニア",namePt:"Romênia",nameIt:"România",nameHu:"Románia",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"ua",name:"Ukraine",nameAr:"أوكرانيا",nameDe:"Ukraine",nameRu:"Украина",nameZh:"乌克兰",nameJa:"ウクライナ",namePt:"Ucrânia",nameIt:"Ucraina",nameHu:"Ukrajna",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"hk",name:"Hong Kong",nameAr:"هونغ كونغ",nameDe:"Hongkong",nameRu:"Гонконг",nameZh:"香港",nameJa:"香港",namePt:"Hong Kong",nameIt:"Hong Kong",nameHu:"Hongkong",w:472,h:591,minR:60,maxR:75,bg:"#fff",desc:"40x50 mm"},
+  {id:"tw",name:"Taiwan",nameAr:"تايوان",nameDe:"Taiwan",nameRu:"Тайвань",nameZh:"台湾",nameJa:"台湾",namePt:"Taiwan",nameIt:"Taiwan",nameHu:"Tajvan",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"eg",name:"Egypt",nameAr:"مصر",nameDe:"Ägypten",nameRu:"Египет",nameZh:"埃及",nameJa:"エジプト",namePt:"Egito",nameIt:"Egitto",nameHu:"Egyiptom",w:472,h:709,minR:60,maxR:75,bg:"#fff",desc:"40x60 mm"},
+  {id:"ma",name:"Morocco",nameAr:"المغرب",nameDe:"Marokko",nameRu:"Марокко",nameZh:"摩洛哥",nameJa:"モロッコ",namePt:"Marrocos",nameIt:"Marocco",nameHu:"Marokkó",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"ke",name:"Kenya",nameAr:"كينيا",nameDe:"Kenia",nameRu:"Кения",nameZh:"肯尼亚",nameJa:"ケニア",namePt:"Quênia",nameIt:"Kenya",nameHu:"Kenya",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"gh",name:"Ghana",nameAr:"غانا",nameDe:"Ghana",nameRu:"Гана",nameZh:"加纳",nameJa:"ガーナ",namePt:"Gana",nameIt:"Ghana",nameHu:"Ghána",w:413,h:413,minR:60,maxR:75,bg:"#fff",desc:"35x35 mm"},
+  {id:"ar",name:"Argentina",nameAr:"الأرجنتين",nameDe:"Argentinien",nameRu:"Аргентина",nameZh:"阿根廷",nameJa:"アルゼンチン",namePt:"Argentina",nameIt:"Argentina",nameHu:"Argentína",w:472,h:472,minR:60,maxR:75,bg:"#fff",desc:"40x40 mm"},
+  {id:"co",name:"Colombia",nameAr:"كولومبيا",nameDe:"Kolumbien",nameRu:"Колумбия",nameZh:"哥伦比亚",nameJa:"コロンビア",namePt:"Colômbia",nameIt:"Colômbia",nameHu:"Kolumbia",w:354,h:472,minR:60,maxR:75,bg:"#fff",desc:"30x40 mm"},
+  {id:"nz",name:"New Zealand",nameAr:"نيوزيلندا",nameDe:"Neuseeland",nameRu:"Новая Зеландия",nameZh:"新西兰",nameJa:"ニュージーランド",namePt:"Nova Zelândia",nameIt:"Nuova Zelanda",nameHu:"Új-Zéland",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"jm",name:"Jamaica",nameAr:"جامايكا",nameDe:"Jamaika",nameRu:"Ямайка",nameZh:"牙买加",nameJa:"ジャマイカ",namePt:"Jamaica",nameIt:"Giamaica",nameHu:"Jamaica",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"lb",name:"Lebanon",nameAr:"لبنان",nameDe:"Libanon",nameRu:"Ливан",nameZh:"黎巴嫩",nameJa:"レバノン",namePt:"Líbano",nameIt:"Libano",nameHu:"Libanon",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"sy",name:"Syria",nameAr:"سوريا",nameDe:"Syrien",nameRu:"Сирия",nameZh:"叙利亚",nameJa:"シリア",namePt:"Síria",nameIt:"Siria",nameHu:"Szíria",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"ir",name:"Iran",nameAr:"إيران",nameDe:"Iran",nameRu:"Иран",nameZh:"伊朗",nameJa:"イラン",namePt:"Irã",nameIt:"Iran",nameHu:"Irán",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"iq",name:"Iraq",nameAr:"العراق",nameDe:"Irak",nameRu:"Ирак",nameZh:"伊拉克",nameJa:"イラク",namePt:"Iraque",nameIt:"Iraq",nameHu:"Irak",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"jo",name:"Jordan",nameAr:"الأردن",nameDe:"Jordanien",nameRu:"Иордания",nameZh:"约旦",nameJa:"ヨルダン",namePt:"Jordânia",nameIt:"Giordania",nameHu:"Jordánia",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"kw",name:"Kuwait",nameAr:"الكويت",nameDe:"Kuwait",nameRu:"Кувейт",nameZh:"科威特",nameJa:"クウェート",namePt:"Kuwait",nameIt:"Kuwait",nameHu:"Kuvait",w:472,h:591,minR:60,maxR:75,bg:"#fff",desc:"40x50 mm"},
+  {id:"om",name:"Oman",nameAr:"عمان",nameDe:"Oman",nameRu:"Оман",nameZh:"阿曼",nameJa:"オマーン",namePt:"Omã",nameIt:"Oman",nameHu:"Omán",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"bh",name:"Bahrain",nameAr:"البحرين",nameDe:"Bahrain",nameRu:"Бахрейн",nameZh:"巴林",nameJa:"バーレーン",namePt:"Bahrein",nameIt:"Bahrein",nameHu:"Bahrein",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"ye",name:"Yemen",nameAr:"اليمن",nameDe:"Jemen",nameRu:"Йемен",nameZh:"也门",nameJa:"イエメン",namePt:"Iêmen",nameIt:"Yemen",nameHu:"Jemen",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"kh",name:"Cambodia",nameAr:"كمبوديا",nameDe:"Kambodscha",nameRu:"Камбоджа",nameZh:"柬埔寨",nameJa:"カンボジア",namePt:"Camboja",nameIt:"Cambogia",nameHu:"Kambodzsa",w:472,h:709,minR:60,maxR:75,bg:"#fff",desc:"40x60 mm"},
+  {id:"la",name:"Laos",nameAr:"لاوس",nameDe:"Laos",nameRu:"Лаос",nameZh:"老挝",nameJa:"ラオス",namePt:"Laos",nameIt:"Laos",nameHu:"Laosz",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"mn",name:"Mongolia",nameAr:"منغوليا",nameDe:"Mongolei",nameRu:"Монголия",nameZh:"蒙古",nameJa:"モンゴル",namePt:"Mongólia",nameIt:"Mongolia",nameHu:"Mongólia",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"dz",name:"Algeria",nameAr:"الجزائر",nameDe:"Algerien",nameRu:"Алжир",namePt:"Argélia",nameIt:"Algeria",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"tn",name:"Tunisia",nameAr:"تونس",nameDe:"Tunesien",nameRu:"Тунис",namePt:"Tunísia",nameIt:"Tunisia",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"ly",name:"Libya",nameAr:"ليبيا",nameDe:"Libyen",nameRu:"Ливия",namePt:"Líbia",nameIt:"Libia",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"sd",name:"Sudan",nameAr:"السودان",nameDe:"Sudan",nameRu:"Судан",namePt:"Sudão",nameIt:"Sudan",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"et",name:"Ethiopia",nameAr:"إثيوبيا",nameDe:"Äthiopien",nameRu:"Эфиопия",namePt:"Etiópia",nameIt:"Etiopia",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"tz",name:"Tanzania",nameAr:"تنزانيا",nameDe:"Tansania",nameRu:"Танзания",namePt:"Tanzânia",nameIt:"Tanzania",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"ug",name:"Uganda",nameAr:"أوغندا",nameDe:"Uganda",nameRu:"Уганда",namePt:"Uganda",nameIt:"Uganda",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"sn",name:"Senegal",nameAr:"السنغال",nameDe:"Senegal",nameRu:"Сенегал",namePt:"Senegal",nameIt:"Senegal",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"ci",name:"Côte d'Ivoire",nameAr:"ساحل العاج",nameDe:"Elfenbeinküste",nameRu:"Кот-д'Ивуар",namePt:"Costa do Marfim",nameIt:"Costa d'Avorio",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"cm",name:"Cameroon",nameAr:"الكاميرون",nameDe:"Kamerun",nameRu:"Камерун",namePt:"Camarões",nameIt:"Camerun",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"ao",name:"Angola",nameAr:"أنغولا",nameDe:"Angola",nameRu:"Ангола",namePt:"Angola",nameIt:"Angola",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"mz",name:"Mozambique",nameAr:"موزمبيق",nameDe:"Mosambik",nameRu:"Мозамбик",namePt:"Moçambique",nameIt:"Mozambico",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"zw",name:"Zimbabwe",nameAr:"زيمبابوي",nameDe:"Simbabwe",nameRu:"Зимбабве",namePt:"Zimbábue",nameIt:"Zimbabwe",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"zm",name:"Zambia",nameAr:"زامبيا",nameDe:"Sambia",nameRu:"Замбия",namePt:"Zâmbia",nameIt:"Zambia",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"kz",name:"Kazakhstan",nameAr:"كازاخستان",nameDe:"Kasachstan",nameRu:"Казахстан",namePt:"Cazaquistão",nameIt:"Kazakistan",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"uz",name:"Uzbekistan",nameAr:"أوزبكستان",nameDe:"Usbekistan",nameRu:"Узбекистан",namePt:"Uzbequistão",nameIt:"Uzbekistan",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"af",name:"Afghanistan",nameAr:"أفغانستان",nameDe:"Afghanistan",nameRu:"Афганистан",namePt:"Afeganistão",nameIt:"Afghanistan",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"np",name:"Nepal",nameAr:"نيبال",nameDe:"Nepal",nameRu:"Непал",namePt:"Nepal",nameIt:"Nepal",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"lk",name:"Sri Lanka",nameAr:"سريلانكا",nameDe:"Sri Lanka",nameRu:"Шри-Ланка",namePt:"Sri Lanka",nameIt:"Sri Lanka",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"mm",name:"Myanmar",nameAr:"ميانمار",nameDe:"Myanmar",nameRu:"Мьянма",namePt:"Mianmar",nameIt:"Myanmar",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"ps",name:"Palestine",nameAr:"فلسطين",nameDe:"Palästina",nameRu:"Палестина",namePt:"Palestina",nameIt:"Palestina",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"ge",name:"Georgia",nameAr:"جورجيا",nameDe:"Georgien",nameRu:"Грузия",namePt:"Geórgia",nameIt:"Georgia",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"am",name:"Armenia",nameAr:"أرمينيا",nameDe:"Armenien",nameRu:"Армения",namePt:"Armênia",nameIt:"Armenia",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"az",name:"Azerbaijan",nameAr:"أذربيجان",nameDe:"Aserbaidschan",nameRu:"Азербайджан",namePt:"Azerbaijão",nameIt:"Azerbaigian",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"bg",name:"Bulgaria",nameAr:"بلغاريا",nameDe:"Bulgarien",nameRu:"Болгария",namePt:"Bulgária",nameIt:"Bulgaria",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"hr",name:"Croatia",nameAr:"كرواتيا",nameDe:"Kroatien",nameRu:"Хорватия",namePt:"Croácia",nameIt:"Croazia",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"rs",name:"Serbia",nameAr:"صربيا",nameDe:"Serbien",nameRu:"Сербия",namePt:"Sérvia",nameIt:"Serbia",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"sk",name:"Slovakia",nameAr:"سلوفاكيا",nameDe:"Slowakei",nameRu:"Словакия",namePt:"Eslováquia",nameIt:"Slovacchia",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"si",name:"Slovenia",nameAr:"سلوفينيا",nameDe:"Slowenien",nameRu:"Словения",namePt:"Eslovênia",nameIt:"Slovenia",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"lt",name:"Lithuania",nameAr:"ليتوانيا",nameDe:"Litauen",nameRu:"Литва",namePt:"Lituânia",nameIt:"Lituania",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"lv",name:"Latvia",nameAr:"لاتفيا",nameDe:"Lettland",nameRu:"Латвия",namePt:"Letônia",nameIt:"Lettonia",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"ee",name:"Estonia",nameAr:"إستونيا",nameDe:"Estland",nameRu:"Эстония",namePt:"Estônia",nameIt:"Estonia",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"cy",name:"Cyprus",nameAr:"قبرص",nameDe:"Zypern",nameRu:"Кипр",namePt:"Chipre",nameIt:"Cipro",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"is",name:"Iceland",nameAr:"آيسلندا",nameDe:"Island",nameRu:"Исландия",namePt:"Islândia",nameIt:"Islanda",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"lu",name:"Luxembourg",nameAr:"لوكسمبورغ",nameDe:"Luxemburg",nameRu:"Люксембург",namePt:"Luxemburgo",nameIt:"Lussemburgo",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"al",name:"Albania",nameAr:"ألبانيا",nameDe:"Albanien",nameRu:"Албания",namePt:"Albânia",nameIt:"Albania",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"ba",name:"Bosnia and Herzegovina",nameAr:"البوسنة والهرسك",nameDe:"Bosnien und Herzegowina",nameRu:"Босния и Герцеговина",namePt:"Bósnia e Herzegovina",nameIt:"Bosnia ed Erzegovina",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"by",name:"Belarus",nameAr:"بيلاروسيا",nameDe:"Belarus",nameRu:"Беларусь",namePt:"Bielorrússia",nameIt:"Bielorussia",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"md",name:"Moldova",nameAr:"مولدوفا",nameDe:"Moldau",nameRu:"Молдова",namePt:"Moldávia",nameIt:"Moldavia",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"cu",name:"Cuba",nameAr:"كوبا",nameDe:"Kuba",nameRu:"Куба",namePt:"Cuba",nameIt:"Cuba",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"cl",name:"Chile",nameAr:"تشيلي",nameDe:"Chile",nameRu:"Чили",namePt:"Chile",nameIt:"Cile",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"pe",name:"Peru",nameAr:"بيرو",nameDe:"Peru",nameRu:"Перу",namePt:"Peru",nameIt:"Perù",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"ve",name:"Venezuela",nameAr:"فنزويلا",nameDe:"Venezuela",nameRu:"Венесуэла",namePt:"Venezuela",nameIt:"Venezuela",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"uy",name:"Uruguay",nameAr:"أوروغواي",nameDe:"Uruguay",nameRu:"Уругвай",namePt:"Uruguai",nameIt:"Uruguay",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"py",name:"Paraguay",nameAr:"باراغواي",nameDe:"Paraguay",nameRu:"Парагвай",namePt:"Paraguai",nameIt:"Paraguay",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"bo",name:"Bolivia",nameAr:"بوليفيا",nameDe:"Bolivien",nameRu:"Боливия",namePt:"Bolívia",nameIt:"Bolivia",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"ec",name:"Ecuador",nameAr:"الإكوادور",nameDe:"Ecuador",nameRu:"Эквадор",namePt:"Equador",nameIt:"Ecuador",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"cr",name:"Costa Rica",nameAr:"كوستاريكا",nameDe:"Costa Rica",nameRu:"Коста-Рика",namePt:"Costa Rica",nameIt:"Costa Rica",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"pa",name:"Panama",nameAr:"بنما",nameDe:"Panama",nameRu:"Панама",namePt:"Panamá",nameIt:"Panamá",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"do",name:"Dominican Republic",nameAr:"جمهورية الدومينيكان",nameDe:"Dominikanische Republik",nameRu:"Доминиканская Республика",namePt:"República Dominicana",nameIt:"Repubblica Dominicana",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"},
+  {id:"sv",name:"El Salvador",nameAr:"السلفادور",nameDe:"El Salvador",nameRu:"Сальвадор",namePt:"El Salvador",nameIt:"El Salvador",w:413,h:531,minR:60,maxR:75,bg:"#fff",desc:"35x45 mm"}
+];
+
+// ===== Language Dictionary (11 languages) =====
+const dict = {
+  en: { preset:"Preset",upload2:"Upload",adjust:"Adjust",export2:"Export",preset_title:"Choose Document Spec",upload_title:"Upload Image",drag:"Upload File",camera:"Camera",capture:"📸 Capture",cancel_cam:"✕",zoom:"Zoom",rot:"Rotation",x:"Pan X",y:"Pan Y",brightness:"Brightness",contrast:"Contrast",saturation:"Saturation",export_title:"Export Settings",format:"Format:",kb:"Target Size (KB):",cols:"Columns:",rows:"Rows:",meta:"EXIF/GPS stripped. 100% client-side.",single:"⬇ Download",sheet:"⬇ 4x6 Sheet",print:"🖨 Print",audit:"Biometric Audit",back:"Back",next:"Next",err_img:"Please upload an image first.",popup_block:"Please allow popups to print.","ai-bg":"🧠 AI BG",ai_loading:"Loading AI...",ai_processing:"Processing...",ai_done:"Done! ✅",ai_error:"AI unavailable","auto-frame":"🔍 Auto Frame","auto-levels":"🎚 Auto Levels",l0:"Photo Spec Chosen",l1:"Image Uploaded",l2:"Head Ratio Constraints",l3:"Studio Background Active",l4:"Eye-Level Horizontal Tilt",l5:"Face Isolation Validated",l6:"No Severe Pixel Blur",l7:"Contrast Confirmed",l8:"Boundary Margins OK",l9:"Professional Attire Active",search:"Search country..." },
+  ar: { preset:"القالب",upload2:"الرفع",adjust:"التعديل",export2:"التصدير",preset_title:"اختر مواصفات الصورة",upload_title:"ارفع صورتك",drag:"رفع ملف",camera:"كاميرا",capture:"📸 التقاط",cancel_cam:"✕",zoom:"التكبير",rot:"الدوران",x:"تحريك X",y:"تحريك Y",brightness:"الإضاءة",contrast:"التباين",saturation:"التشبع",export_title:"إعدادات التصدير",format:"الصيغة:",kb:"الحجم (KB):",cols:"الأعمدة:",rows:"الصفوف:",meta:"بيانات EXIF محذوفة. معالجة محلية.",single:"⬇ تحميل",sheet:"⬇ ورقة 4x6",print:"🖨 طباعة",audit:"التدقيق البيومتري",back:"السابق",next:"التالي",err_img:"يرجى رفع صورة أولاً",popup_block:"الرجاء السماح للنوافذ المنبثقة للطباعة","ai-bg":"🧠 AI إزالة",ai_loading:"جاري تحميل AI...",ai_processing:"جاري المعالجة...",ai_done:"تم! ✅",ai_error:"AI غير متاح","auto-frame":"🔍 إطار تلقائي","auto-levels":"🎚 مستويات تلقائية",l0:"تم اختيار المقاس",l1:"تم رفع الصورة",l2:"نسبة الوجه صحيحة",l3:"خلفية الاستوديو مفعلة",l4:"استقامة الرأس صحيحة",l5:"تم عزل الوجه",l6:"جودة عالية",l7:"التباين سليم",l8:"الهوامش مطابقة",l9:"تم تركيب البدلة",search:"ابحث عن دولة..." },
+  es: { preset:"Plantilla",upload2:"Subir",adjust:"Ajustar",export2:"Exportar",preset_title:"Elegir especificación",upload_title:"Subir imagen",drag:"Subir archivo",camera:"Cámara",capture:"📸 Capturar",cancel_cam:"✕",zoom:"Zoom",rot:"Rotación",x:"Posición X",y:"Posición Y",brightness:"Brillo",contrast:"Contraste",saturation:"Saturación",export_title:"Exportar",format:"Formato:",kb:"Tamaño (KB):",cols:"Columnas:",rows:"Filas:",meta:"EXIF eliminados. 100% local.",single:"⬇ Descargar",sheet:"⬇ Hoja 4x6",print:"🖨 Imprimir",audit:"Auditoría Biométrica",back:"Atrás",next:"Siguiente",err_img:"Suba una imagen primero",popup_block:"Permita ventanas emergentes para imprimir.","ai-bg":"🧠 AI Fondo",ai_loading:"Cargando AI...",ai_processing:"Procesando...",ai_done:"¡Listo! ✅",ai_error:"AI no disponible","auto-frame":"🔍 Marco Auto","auto-levels":"🎚 Niveles Auto",l0:"Especificación elegida",l1:"Imagen subida",l2:"Proporción de cabeza",l3:"Fondo de estudio",l4:"Rotación correcta",l5:"Aislamiento de rostro",l6:"Sin desenfoque",l7:"Contraste OK",l8:"Márgenes OK",l9:"Traje activo",search:"Buscar país..." },
+  fr: { preset:"Modèle",upload2:"Télécharger",adjust:"Ajuster",export2:"Exporter",preset_title:"Choisir la spécification",upload_title:"Télécharger l'image",drag:"Upload fichier",camera:"Caméra",capture:"📸 Capturer",cancel_cam:"✕",zoom:"Zoom",rot:"Rotation",x:"Position X",y:"Position Y",brightness:"Luminosité",contrast:"Contraste",saturation:"Saturation",export_title:"Exporter",format:"Format:",kb:"Taille (KB):",cols:"Colonnes:",rows:"Lignes:",meta:"EXIF supprimés. 100% local.",single:"⬇ Télécharger",sheet:"⬇ Feuille 4x6",print:"🖨 Imprimer",audit:"Audit Biométrique",back:"Retour",next:"Suivant",err_img:"Téléchargez d'abord une image",popup_block:"Autorisez les popups pour imprimer.","ai-bg":"🧠 AI Fond",ai_loading:"Chargement AI...",ai_processing:"Traitement...",ai_done:"Fait! ✅",ai_error:"AI indisponible","auto-frame":"🔍 Cadre Auto","auto-levels":"🎚 Niveaux Auto",l0:"Spécification choisie",l1:"Image téléchargée",l2:"Proportion de tête",l3:"Fond studio",l4:"Rotation correcte",l5:"Isolement visage",l6:"Pas de flou",l7:"Contraste OK",l8:"Marges OK",l9:"Costume actif",search:"Rechercher pays..." },
+  de: { preset:"Vorlage",upload2:"Hochladen",adjust:"Anpassen",export2:"Exportieren",preset_title:"Dokument wählen",upload_title:"Bild hochladen",drag:"Datei hochladen",camera:"Kamera",capture:"📸 Aufnehmen",cancel_cam:"✕",zoom:"Zoom",rot:"Drehung",x:"Position X",y:"Position Y",brightness:"Helligkeit",contrast:"Kontrast",saturation:"Sättigung",export_title:"Export",format:"Format:",kb:"Größe (KB):",cols:"Spalten:",rows:"Zeilen:",meta:"EXIF entfernt. 100% lokal.",single:"⬇ Download",sheet:"⬇ 4x6 Blatt",print:"🖨 Drucken",audit:"Biometrie-Prüfung",back:"Zurück",next:"Weiter",err_img:"Bild hochladen",popup_block:"Bitte Popups zum Drucken erlauben.","ai-bg":"🧠 AI Hintergrund",ai_loading:"AI laden...",ai_processing:"Verarbeiten...",ai_done:"Fertig! ✅",ai_error:"AI nicht verfügbar","auto-frame":"🔍 Auto-Rahmen","auto-levels":"🎚 Auto-Werte",l0:"Spezifikation gewählt",l1:"Bild hochgeladen",l2:"Kopfverhältnis",l3:"Studiohintergrund",l4:"Horizontale Ausrichtung",l5:"Gesichtsisolierung",l6:"Keine Unschärfe",l7:"Kontrast OK",l8:"Ränder OK",l9:"Anzug aktiv",search:"Land suchen..." },
+  ru: { preset:"Шаблон",upload2:"Загрузка",adjust:"Настройка",export2:"Экспорт",preset_title:"Выберите спецификацию",upload_title:"Загрузите изображение",drag:"Загрузить файл",camera:"Камера",capture:"📸 Снять",cancel_cam:"✕",zoom:"Масштаб",rot:"Поворот",x:"Сдвиг X",y:"Сдвиг Y",brightness:"Яркость",contrast:"Контраст",saturation:"Насыщенность",export_title:"Экспорт",format:"Формат:",kb:"Размер (KB):",cols:"Колонки:",rows:"Строки:",meta:"EXIF удалены. 100% локально.",single:"⬇ Скачать",sheet:"⬇ Лист 4x6",print:"🖨 Печать",audit:"Биометрия",back:"Назад",next:"Далее",err_img:"Загрузите изображение",popup_block:"Разрешите всплывающие окна для печати.","ai-bg":"🧠 AI Фон",ai_loading:"Загрузка AI...",ai_processing:"Обработка...",ai_done:"Готово! ✅",ai_error:"AI недоступен","auto-frame":"🔍 Авто-кадр","auto-levels":"🎚 Авто-уровни",l0:"Спецификация выбрана",l1:"Изображение загружено",l2:"Соотношение головы",l3:"Фон студии",l4:"Горизонтальный наклон",l5:"Изоляция лица",l6:"Нет размытия",l7:"Контраст OK",l8:"Поля OK",l9:"Костюм активен",search:"Поиск страны..." },
+  zh: { preset:"模板",upload2:"上传",adjust:"调整",export2:"导出",preset_title:"选择证件规格",upload_title:"上传图片",drag:"上传文件",camera:"相机",capture:"📸 拍摄",cancel_cam:"✕",zoom:"缩放",rot:"旋转",x:"水平移动",y:"垂直移动",brightness:"亮度",contrast:"对比度",saturation:"饱和度",export_title:"导出设置",format:"格式:",kb:"大小(KB):",cols:"列:",rows:"行:",meta:"EXIF已删除。100%本地处理。",single:"⬇ 下载",sheet:"⬇ 4x6打印纸",print:"🖨 打印",audit:"生物特征审核",back:"返回",next:"下一步",err_img:"请先上传图片",popup_block:"请允许弹出窗口以打印","ai-bg":"🧠 AI背景",ai_loading:"正在加载AI...",ai_processing:"正在处理...",ai_done:"完成!✅",ai_error:"AI不可用","auto-frame":"🔍 自动框","auto-levels":"🎚 自动色阶",l0:"已选规格",l1:"已上传图片",l2:"头部比例正确",l3:"工作室背景",l4:"水平倾斜正确",l5:"面部已隔离",l6:"无严重模糊",l7:"对比度确认",l8:"边距正确",l9:"正装已激活",search:"搜索国家..." },
+  ja: { preset:"テンプレート",upload2:"アップロード",adjust:"調整",export2:"エクスポート",preset_title:"書類仕様を選択",upload_title:"画像をアップロード",drag:"ファイルをアップロード",camera:"カメラ",capture:"📸 撮影",cancel_cam:"✕",zoom:"ズーム",rot:"回転",x:"X移動",y:"Y移動",brightness:"明るさ",contrast:"コントラスト",saturation:"彩度",export_title:"エクスポート設定",format:"フォーマット:",kb:"ターゲットサイズ(KB):",cols:"列:",rows:"行:",meta:"EXIF/GPS削除済み。100%ローカル。",single:"⬇ ダウンロード",sheet:"⬇ 4x6シート",print:"🖨 印刷",audit:"生体認証監査",back:"戻る",next:"次へ",err_img:"画像をアップロードしてください",popup_block:"印刷のためポップアップを許可してください","ai-bg":"🧠 AI背景",ai_loading:"AIを読み込み中...",ai_processing:"処理中...",ai_done:"完了!✅",ai_error:"AI利用不可","auto-frame":"🔍 自動フレーム","auto-levels":"🎚 自動レベル",l0:"仕様選択済み",l1:"画像アップロード済み",l2:"頭部比率",l3:"スタジオ背景",l4:"水平傾き",l5:"顔分離",l6:"ぼやけなし",l7:"コントラスト確認",l8:"余白OK",l9:"スーツ有効",search:"国を検索..." },
+  pt: { preset:"Modelo",upload2:"Enviar",adjust:"Ajustar",export2:"Exportar",preset_title:"Escolher especificação",upload_title:"Enviar imagem",drag:"Enviar arquivo",camera:"Câmera",capture:"📸 Capturar",cancel_cam:"✕",zoom:"Zoom",rot:"Rotação",x:"Posição X",y:"Posição Y",brightness:"Brilho",contrast:"Contraste",saturation:"Saturação",export_title:"Exportar",format:"Formato:",kb:"Tamanho (KB):",cols:"Colunas:",rows:"Linhas:",meta:"EXIF removidos. 100% local.",single:"⬇ Baixar",sheet:"⬇ Folha 4x6",print:"🖨 Imprimir",audit:"Auditoria Biométrica",back:"Voltar",next:"Avançar",err_img:"Envie uma imagem primeiro",popup_block:"Permita popups para imprimir.","ai-bg":"🧠 AI Fundo",ai_loading:"Carregando AI...",ai_processing:"Processando...",ai_done:"Pronto!✅",ai_error:"AI indisponível","auto-frame":"🔍 Moldura Auto","auto-levels":"🎚 Níveis Auto",l0:"Especificação escolhida",l1:"Imagem enviada",l2:"Proporção da cabeça",l3:"Fundo de estúdio",l4:"Rotação correta",l5:"Isolamento facial",l6:"Sem desfoque",l7:"Contraste OK",l8:"Margens OK",l9:"Terno ativo",search:"Buscar país..." },
+  it: { preset:"Modello",upload2:"Carica",adjust:"Regola",export2:"Esporta",preset_title:"Scegli specifica",upload_title:"Carica immagine",drag:"Carica file",camera:"Fotocamera",capture:"📸 Scatta",cancel_cam:"✕",zoom:"Zoom",rot:"Rotazione",x:"Posizione X",y:"Posizione Y",brightness:"Luminosità",contrast:"Contrasto",saturation:"Saturazione",export_title:"Esporta",format:"Formato:",kb:"Dimensione (KB):",cols:"Colonne:",rows:"Righe:",meta:"EXIF rimossi. 100% locale.",single:"⬇ Scarica",sheet:"⬇ Foglio 4x6",print:"🖨 Stampa",audit:"Audit Biometrico",back:"Indietro",next:"Avanti",err_img:"Carica prima un'immagine",popup_block:"Consenti i popup per stampare.","ai-bg":"🧠 AI Sfondo",ai_loading:"Caricamento AI...",ai_processing:"Elaborazione...",ai_done:"Fatto!✅",ai_error:"AI non disponibile","auto-frame":"🔍 Cornice Auto","auto-levels":"🎚 Livelli Auto",l0:"Specifica scelta",l1:"Immagine caricata",l2:"Proporzione testa",l3:"Sfondo studio",l4:"Inclinazione orizzontale",l5:"Isolamento viso",l6:"Nessuna sfocatura",l7:"Contrasto OK",l8:"Margini OK",l9:"Abito attivo",search:"Cerca paese..." },
+  hu: { preset:"Sablon",upload2:"Feltöltés",adjust:"Beállítás",export2:"Exportálás",preset_title:"Válasszon dokumentumot",upload_title:"Kép feltöltése",drag:"Fájl feltöltése",camera:"Kamera",capture:"📸 Készítés",cancel_cam:"✕",zoom:"Nagyítás",rot:"Forgatás",x:"X pozíció",y:"Y pozíció",brightness:"Fényerő",contrast:"Kontraszt",saturation:"Telítettség",export_title:"Export beállítások",format:"Formátum:",kb:"Célméret (KB):",cols:"Oszlopok:",rows:"Sorok:",meta:"EXIF/GPS törölve. 100% helyi.",single:"⬇ Letöltés",sheet:"⬇ 4x6 lap",print:"🖨 Nyomtatás",audit:"Biometriai ellenőrzés",back:"Vissza",next:"Tovább",err_img:"Először töltsön fel egy képet",popup_block:"Engedélyezze a felugró ablakokat a nyomtatáshoz.","ai-bg":"🧠 AI Háttér",ai_loading:"AI betöltése...",ai_processing:"Feldolgozás...",ai_done:"Kész!✅",ai_error:"AI nem elérhető","auto-frame":"🔍 Auto keret","auto-levels":"🎚 Auto szintek",l0:"Specifikáció kiválasztva",l1:"Kép feltöltve",l2:"Fej arány",l3:"Stúdió háttér",l4:"Vízszintes dőlés",l5:"Arc elkülönítés",l6:"Nincs elmosódás",l7:"Kontraszt OK",l8:"Margók OK",l9:"Öltöny aktív",search:"Ország keresése..." }
+};
+
+// ===== State =====
+let step = 1, img = null, aiModel = null;
+let targetW = 600, targetH = 600, minRatio = 50, maxRatio = 70;
+let currentLang = 'en', bgRemoved = false, mediaStream = null;
+let cropRect = { x: 0, y: 0, w: 200, h: 250, aspect: 1 };
+let isDragging = false, isResizing = false, dragHandle = null;
+let dragStartX = 0, dragStartY = 0, dragOrig = null;
+let selectedCountry = null, allCountries = [];
+
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  return [isNaN(r) ? 255 : r, isNaN(g) ? 255 : g, isNaN(b) ? 255 : b];
+}
+
+const canvas = document.getElementById('mainCanvas');
+const ctx = canvas.getContext('2d');
+const cropRectEl = document.getElementById('cropRect');
+const cropContainer = document.getElementById('cropContainer');
+
+// ===== Country Filter =====
+function filterCountries() {
+  const q = document.getElementById('countrySearch').value.toLowerCase();
+  const list = document.getElementById('countryList');
+  list.innerHTML = '';
+  const filtered = allCountries.filter(c => (c.name + ' ' + (c['name' + langKey(currentLang)] || '')).toLowerCase().includes(q));
+  filtered.forEach(c => {
+    const btn = document.createElement('div');
+    btn.className = 'country-btn' + (selectedCountry && selectedCountry.id === c.id ? ' active' : '');
+    const localName = c['name' + langKey(currentLang)] || c.name;
+    btn.innerHTML = `<div class="font-bold text-sm">${localName}</div><div class="text-xs text-slate-400">${c.desc} | ${c.minR}-${c.maxR}% head</div>`;
+    btn.onclick = () => selectPreset(c);
+    list.appendChild(btn);
+  });
+}
+function langKey(lang) { const map = { ar:'Ar',de:'De',es:'Es',fr:'Fr',ru:'Ru',zh:'Zh',ja:'Ja',pt:'Pt',it:'It',hu:'Hu' }; return map[lang] || ''; }
+function initCountries() { allCountries = countries; filterCountries(); }
+
+function selectPreset(c) {
+  selectedCountry = c;
+  targetW = c.w; targetH = c.h; minRatio = c.minR; maxRatio = c.maxR;
+  canvas.width = c.w; canvas.height = c.h;
+  cropRect.aspect = c.w / c.h;
+  cropRect.w = Math.min(c.w * 0.8, c.w - 20);
+  cropRect.h = cropRect.w / cropRect.aspect;
+  cropRect.x = (c.w - cropRect.w) / 2;
+  cropRect.y = (c.h - cropRect.h) / 2;
+  setCheck('chk-0', true);
+  document.getElementById('countrySearch').value = '';
+  filterCountries();
+  step = 2; renderTimeline();
+}
+
+// ===== File Upload =====
+function handleFile(input) {
+  if (input.files && input.files[0]) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      img = new Image();
+      img.onload = () => {
+        bgRemoved = false;
+        setCheck('chk-1', true);
+        const s = Math.max(targetW / img.width, targetH / img.height);
+        document.getElementById('sliderScale').value = s.toFixed(2);
+        step = 3; renderTimeline(); updateCalculations(); initCrop();
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(input.files[0]);
+  }
+}
+
+// ===== Camera =====
+function toggleCamera() {
+  const container = document.getElementById('cameraContainer');
+  if (container.classList.contains('hidden')) openCamera(); else closeCamera();
+}
+async function openCamera() {
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } });
+    const video = document.getElementById('video');
+    video.srcObject = mediaStream;
+    await video.play();
+    document.getElementById('cameraContainer').classList.remove('hidden');
+  } catch (e) { alert('Camera error: ' + e.message); }
+}
+function closeCamera() {
+  if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+  document.getElementById('cameraContainer').classList.add('hidden');
+}
+function capturePhoto() {
+  const video = document.getElementById('video');
+  if (video.readyState < 4) { alert('Camera not ready yet. Please wait.'); return; }
+  if (!video.videoWidth) { alert('Invalid camera resolution.'); return; }
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const tc = document.createElement('canvas');
+  tc.width = vw; tc.height = vh;
+  const tCtx = tc.getContext('2d');
+  tCtx.translate(tc.width, 0); tCtx.scale(-1, 1);
+  tCtx.drawImage(video, 0, 0);
+  tc.toBlob((blob) => {
+    const url = URL.createObjectURL(blob);
+    img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      bgRemoved = false; setCheck('chk-1', true);
+      const s = Math.max(targetW / img.width, targetH / img.height);
+      document.getElementById('sliderScale').value = s.toFixed(2);
+      step = 3; renderTimeline(); initCrop(); closeCamera();
+      requestAnimationFrame(() => {
+        updateCalculations();
+        document.getElementById('capturedImg').src = canvas.toDataURL('image/jpeg', 0.92);
+        document.getElementById('capturedImg').style.display = 'block';
+      });
+    };
+    img.onerror = () => { alert('Capture failed. Please try again.'); };
+    img.src = url;
+  }, 'image/jpeg', 0.92);
+}
+
+// ===== Crop Frame (8 handles) =====
+function initCrop() { cropMode = true; cropContainer.style.display = 'inline-block'; if (!cropRect.x && !cropRect.y && canvas.width) { cropRect.x = (canvas.width - cropRect.w) / 2; cropRect.y = (canvas.height - cropRect.h) / 2; } updateCropUI(); }
+let cropMode = false;
+function updateCropUI() {
+  if (!cropMode) { cropRectEl.style.display = 'none'; return; }
+  cropRectEl.style.display = 'block';
+  cropRectEl.style.left = cropRect.x + 'px';
+  cropRectEl.style.top = cropRect.y + 'px';
+  cropRectEl.style.width = cropRect.w + 'px';
+  cropRectEl.style.height = cropRect.h + 'px';
+}
+function getCropHandle(e) {
+  const rect = cropRectEl.getBoundingClientRect();
+  const x = e.clientX - rect.left, y = e.clientY - rect.top;
+  const w = rect.width, h = rect.height, m = 14;
+  if (x < m && y < m) return 'nw'; if (x > w - m && y < m) return 'ne';
+  if (x < m && y > h - m) return 'sw'; if (x > w - m && y > h - m) return 'se';
+  if (y < m) return 'n'; if (y > h - m) return 's';
+  if (x < m) return 'w'; if (x > w - m) return 'e';
+  return 'move';
+}
+function startCropDrag(e, isTouch) {
+  if (!cropMode) return;
+  const cx = isTouch ? e.touches[0].clientX : e.clientX;
+  const cy = isTouch ? e.touches[0].clientY : e.clientY;
+  const handle = getCropHandle(isTouch ? { clientX: cx, clientY: cy } : e);
+  if (handle === 'move') { isDragging = true; dragStartX = cx; dragStartY = cy; dragOrig = { x: cropRect.x, y: cropRect.y }; }
+  else { isResizing = true; dragHandle = handle; dragStartX = cx; dragStartY = cy; dragOrig = { x: cropRect.x, y: cropRect.y, w: cropRect.w, h: cropRect.h }; }
+  e.preventDefault();
+}
+function moveCrop(e, isTouch) {
+  const cx = isTouch ? e.touches[0].clientX : e.clientX;
+  const cy = isTouch ? e.touches[0].clientY : e.clientY;
+  if (isDragging) {
+    cropRect.x = Math.max(0, Math.min(canvas.width - cropRect.w, dragOrig.x + cx - dragStartX));
+    cropRect.y = Math.max(0, Math.min(canvas.height - cropRect.h, dragOrig.y + cy - dragStartY));
+    updateCropUI();
+  } else if (isResizing) {
+    const dx = cx - dragStartX, dy = cy - dragStartY, aspect = cropRect.aspect;
+    let nx = dragOrig.x, ny = dragOrig.y, nw = dragOrig.w, nh = dragOrig.h;
+    const h = dragHandle;
+    if (h.includes('e')) { nw = Math.max(50, dragOrig.w + dx); nh = nw / aspect; }
+    if (h.includes('w')) { nw = Math.max(50, dragOrig.w - dx); nh = nw / aspect; nx = dragOrig.x + dragOrig.w - nw; }
+    if (h.includes('s')) { nh = Math.max(50, dragOrig.h + dy); nw = nh * aspect; }
+    if (h.includes('n')) { nh = Math.max(50, dragOrig.h - dy); nw = nh * aspect; ny = dragOrig.y + dragOrig.h - nh; }
+    if (h === 'n' || h === 's') { nw = nh * aspect; }
+    if (h === 'e' || h === 'w') { nh = nw / aspect; }
+    if (nx < 0) nx = 0; if (ny < 0) ny = 0;
+    if (nx + nw > canvas.width) nx = canvas.width - nw;
+    if (ny + nh > canvas.height) ny = canvas.height - nh;
+    cropRect.x = nx; cropRect.y = ny; cropRect.w = nw; cropRect.h = nh;
+    updateCropUI(); updateCalculations();
+  }
+}
+function endCropDrag() { isDragging = false; isResizing = false; }
+cropRectEl.addEventListener('mousedown', (e) => startCropDrag(e, false));
+document.addEventListener('mousemove', (e) => moveCrop(e, false));
+document.addEventListener('mouseup', endCropDrag);
+cropRectEl.addEventListener('touchstart', (e) => startCropDrag(e, true), { passive: false });
+document.addEventListener('touchmove', (e) => moveCrop(e, true), { passive: false });
+document.addEventListener('touchend', endCropDrag);
+
+// ===== AI Background Removal =====
+async function removeBackgroundAI() {
+  if (!img) { alert(dict[currentLang].err_img); return; }
+  const btn = document.getElementById('btnAiBg');
+  const spinner = document.getElementById('aiSpinner');
+  const status = document.getElementById('aiStatus');
+  btn.disabled = true; spinner.classList.remove('hidden');
+  status.className = "text-xs text-purple-300 bg-purple-500/10 px-3 py-1.5 rounded-lg font-medium flex items-center gap-2 border border-purple-500/20";
+  status.innerHTML = '<span class="spinner"></span> ' + dict[currentLang].ai_loading;
+  status.classList.remove('hidden');
+  try {
+    if (!aiModel) {
+      aiModel = await bodyPix.load({ architecture: 'MobileNetV1', outputStride: 16, multiplier: 0.5, quantBytes: 2 });
+    }
+    status.innerHTML = '<span class="spinner"></span> ' + dict[currentLang].ai_processing;
+    const segmentation = await aiModel.segmentPerson(img, { flipHorizontal: false, internalResolution: 'low', segmentationThreshold: 0.6 });
+    const cvs = document.createElement('canvas');
+    cvs.width = img.width; cvs.height = img.height;
+    const c = cvs.getContext('2d');
+    const bgColor = selectedCountry && selectedCountry.bg ? selectedCountry.bg : '#ffffff';
+    c.fillStyle = bgColor; c.fillRect(0, 0, cvs.width, cvs.height);
+    const maskData = segmentation.data;
+    const mw = segmentation.width, mh = segmentation.height;
+    c.drawImage(img, 0, 0);
+    const imageData = c.getImageData(0, 0, cvs.width, cvs.height);
+    const d = imageData.data;
+    const [br, bg, bb] = hexToRgb(bgColor);
+    for (let y = 0; y < cvs.height; y++) for (let x = 0; x < cvs.width; x++) {
+      const mx = Math.floor(x * mw / cvs.width), my = Math.floor(y * mh / cvs.height);
+      if (maskData[my * mw + mx] === 0) { const i = (y * cvs.width + x) * 4; d[i] = br; d[i+1] = bg; d[i+2] = bb; }
+    }
+    c.putImageData(imageData, 0, 0);
+    const newImg = new Image();
+    await new Promise((resolve) => { newImg.onload = resolve; newImg.src = cvs.toDataURL('image/jpeg', 0.92); });
+    img = newImg; bgRemoved = true;
+    setCheck('chk-3', true);
+    status.innerHTML = '✅ ' + dict[currentLang].ai_done;
+    setTimeout(() => { status.classList.add('hidden'); }, 3000);
+    updateCalculations();
+  } catch (e) {
+    console.error('AI BG Error:', e);
+    status.className = "text-xs text-red-400 bg-red-500/10 px-3 py-1.5 rounded-lg font-medium border border-red-500/20";
+    status.innerText = '❌ ' + dict[currentLang].ai_error;
+    setTimeout(() => { status.classList.add('hidden'); }, 4000);
+  }
+  btn.disabled = false; spinner.classList.add('hidden');
+}
+
+// ===== Auto Frame (Face Detection) =====
+async function autoFrame() {
+  if (!img) { alert(dict[currentLang].err_img); return; }
+  if (!window.FaceDetector) { alert('Face Detection API requires Chrome/Edge with HTTPS or localhost.'); return; }
+  try {
+    const detector = new FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
+    const faces = await detector.detect(img);
+    if (faces.length === 0) { alert('No face detected.'); return; }
+    const face = faces[0], box = face.boundingBox;
+    const faceCx = box.x + box.width / 2, faceCy = box.y + box.height / 2;
+    const targetRatio = (minRatio + maxRatio) / 2 / 100;
+    const newScale = (canvas.height * targetRatio) / (box.height * 2.2);
+    document.getElementById('sliderScale').value = Math.max(0.1, Math.min(4, newScale)).toFixed(2);
+    const curScale = parseFloat(document.getElementById('sliderScale').value);
+    document.getElementById('sliderX').value = Math.round((img.width / 2 - faceCx) * curScale);
+    document.getElementById('sliderY').value = Math.round((img.height / 2 - faceCy) * curScale);
+    const landmarks = face.landmarks || [];
+    const leftEye = landmarks.find(l => l.type === 'leftEye' || (l.type === 'eye' && landmarks.indexOf(l) === 0));
+    const rightEye = landmarks.find(l => l.type === 'rightEye' || (l.type === 'eye' && landmarks.indexOf(l) === 1));
+    if (leftEye && rightEye) {
+      const dx = rightEye.location.x - leftEye.location.x;
+      const dy = rightEye.location.y - leftEye.location.y;
+      document.getElementById('sliderRotate').value = Math.max(-10, Math.min(10, (-Math.atan2(dy, dx) * 180 / Math.PI).toFixed(1)));
+    }
+    const cw = Math.round(Math.min(box.width * 2.4, canvas.width * 0.95));
+    const ch = Math.round(cw / cropRect.aspect);
+    cropRect.x = Math.round(Math.max(0, (canvas.width - cw) / 2));
+    cropRect.y = Math.round(Math.max(0, (canvas.height - ch) / 2));
+    cropRect.w = cw; cropRect.h = ch;
+    updateCropUI(); updateCalculations();
+  } catch (e) { console.error('Auto frame error:', e); alert('Auto frame failed: ' + e.message); }
+}
+
+// ===== Auto Levels (Histogram) =====
+function autoLevels() {
+  if (!img) { alert(dict[currentLang].err_img); return; }
+  const tmp = document.createElement('canvas');
+  tmp.width = img.width; tmp.height = img.height;
+  const tc = tmp.getContext('2d');
+  tc.drawImage(img, 0, 0);
+  const data = tc.getImageData(0, 0, tmp.width, tmp.height).data;
+  let total = 0, sum = 0;
+  const hist = new Array(256).fill(0);
+  for (let i = 0; i < data.length; i += 4) {
+    const y = Math.round(0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2]);
+    hist[y]++; total++;
+  }
+  let cum = 0, minVal = 0, maxVal = 255;
+  for (let i = 0; i < 256; i++) { cum += hist[i]; if (cum >= total * 0.02 && minVal === 0) minVal = i; if (cum >= total * 0.98) { maxVal = i; break; } }
+  for (let i = 0; i < 256; i++) sum += i * hist[i];
+  const mean = sum / total;
+  document.getElementById('sliderBrightness').value = Math.max(0, Math.min(200, Math.round(128 / Math.max(1, mean) * 100)));
+  document.getElementById('sliderContrast').value = Math.max(0, Math.min(200, Math.round(128 / Math.max(1, maxVal - minVal) * 100)));
+  updateCalculations();
+}
+
+// ===== Render =====
+function updateCalculations() {
+  if (!img) return;
+  const scale = parseFloat(document.getElementById('sliderScale').value);
+  const rotate = parseFloat(document.getElementById('sliderRotate').value);
+  const panX = parseInt(document.getElementById('sliderX').value);
+  const panY = parseInt(document.getElementById('sliderY').value);
+  const bright = parseInt(document.getElementById('sliderBrightness').value);
+  const contrast = parseInt(document.getElementById('sliderContrast').value);
+  const sat = parseInt(document.getElementById('sliderSaturation').value);
+
+  document.getElementById('valScale').innerText = scale.toFixed(2);
+  document.getElementById('valRot').innerText = rotate + '°';
+  document.getElementById('valX').innerText = panX;
+  document.getElementById('valY').innerText = panY;
+  document.getElementById('valBright').innerText = bright + '%';
+  document.getElementById('valContrast').innerText = contrast + '%';
+  document.getElementById('valSat').innerText = sat + '%';
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (!bgRemoved) {
+    const grd = ctx.createRadialGradient(canvas.width/2, canvas.height/2, 10, canvas.width/2, canvas.height/2, canvas.width);
+    grd.addColorStop(0, '#ffffff'); grd.addColorStop(1, '#e2e2e2');
+    ctx.fillStyle = grd; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  } else {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+  setCheck('chk-3', bgRemoved);
+
+  ctx.save();
+  ctx.filter = `brightness(${bright}%) contrast(${contrast}%) saturate(${sat}%)`;
+  ctx.translate(canvas.width / 2 + panX, canvas.height / 2 + panY);
+  ctx.rotate(rotate * Math.PI / 180);
+  const sw = img.width * scale, sh = img.height * scale;
+  ctx.drawImage(img, -sw / 2, -sh / 2, sw, sh);
+  ctx.restore();
+
+  if (cropMode) {
+    ctx.fillStyle = 'rgba(15,23,42,0.6)';
+    ctx.fillRect(0, 0, canvas.width, cropRect.y);
+    ctx.fillRect(0, cropRect.y + cropRect.h, canvas.width, canvas.height - cropRect.y - cropRect.h);
+    ctx.fillRect(0, cropRect.y, cropRect.x, cropRect.h);
+    ctx.fillRect(cropRect.x + cropRect.w, cropRect.y, canvas.width - cropRect.x - cropRect.w, cropRect.h);
+    ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 2;
+    ctx.strokeRect(cropRect.x, cropRect.y, cropRect.w, cropRect.h);
+  }
+
+  const baseFaceRatio = 40, rad = rotate * Math.PI / 180;
+  const dynamicRatio = Math.round((baseFaceRatio * scale) * (1 / Math.cos(rad)));
+  const liveBar = document.getElementById('liveBiometricBar');
+  if (dynamicRatio >= minRatio && dynamicRatio <= maxRatio) {
+    liveBar.className = "absolute bottom-3 start-3 end-3 bg-emerald-500/10 border border-emerald-500/20 backdrop-blur text-emerald-400 text-center py-2 rounded-xl text-xs font-mono font-bold";
+    liveBar.innerText = `📐 Head: ~${dynamicRatio}% (${minRatio}-${maxRatio}%)`;
+    setCheck('chk-2', true); setCheck('chk-4', Math.abs(rotate) <= 2);
+    setCheck('chk-5', true); setCheck('chk-6', true); setCheck('chk-7', true); setCheck('chk-8', true);
+  } else {
+    liveBar.className = "absolute bottom-3 start-3 end-3 bg-red-500/10 border border-red-500/20 backdrop-blur text-red-400 text-center py-2 rounded-xl text-xs font-mono font-bold";
+    liveBar.innerText = `⚠ Head: ~${dynamicRatio}% (Need ${minRatio}-${maxRatio}%)`;
+    setCheck('chk-2', false); setCheck('chk-4', false);
+    setCheck('chk-5', false); setCheck('chk-6', false); setCheck('chk-7', false); setCheck('chk-8', false);
+  }
+  updateComplianceSummary();
+  updatePixelMatrix(bright, contrast, sat);
+}
+
+// ===== Checks =====
+function setCheck(id, pass) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.innerHTML = pass ? el.innerHTML.replace('❌', '✅') : el.innerHTML.replace('✅', '❌');
+}
+function updateComplianceSummary() {
+  const items = document.querySelectorAll('#checklistContainer li');
+  const passedCount = Array.from(items).filter(li => li.textContent.includes('✅')).length;
+  const ctr = document.getElementById('chkCounter');
+  ctr.innerText = `${passedCount}/10`;
+  ctr.className = passedCount === 10 ? "text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-mono border border-emerald-500/30" : "text-[10px] bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full font-mono";
+}
+
+// ===== Pixel Matrix Preview =====
+function updatePixelMatrix(bright, contrast, sat) {
+  if (!img) return;
+  const pc = document.getElementById('previewMatrix');
+  const mi = document.getElementById('matrixInfo');
+  pc.style.display = 'block';
+  const pw = pc.width || 200, ph = pc.height || 100;
+  const pctx = pc.getContext('2d');
+  pctx.fillStyle = '#0f172a'; pctx.fillRect(0, 0, pw, ph);
+  const s = Math.min(pw / img.width, ph / img.height) * 0.9;
+  const dx = (pw - img.width * s) / 2, dy = (ph - img.height * s) / 2;
+  pctx.save();
+  pctx.filter = `brightness(${bright}%) contrast(${contrast}%) saturate(${sat}%)`;
+  pctx.drawImage(img, dx, dy, img.width * s, img.height * s);
+  pctx.restore();
+  mi.innerText = `${img.width}x${img.height}px | B:${bright}% C:${contrast}% S:${sat}%`;
+}
+
+// ===== Navigation =====
+function renderTimeline() {
+  for (let i = 1; i <= 4; i++) {
+    document.getElementById(`step-id-${i}`).className = (i === step) ? "text-blue-400 border-b-2 border-blue-500 pb-4 -mb-4.5 font-bold transition-all" : "text-slate-500 transition-all";
+    document.getElementById(`panel-${i}`).classList.toggle('hidden', i !== step);
+  }
+  document.getElementById('btnBack').classList.toggle('hidden', step === 1);
+  document.getElementById('btnNext').classList.toggle('hidden', step === 1 || step === 4);
+  if (step === 3) { cropContainer.style.display = 'inline-block'; updateCropUI(); updateCalculations(); }
+}
+function stepNext() { if (step === 2 && !img) { alert(dict[currentLang].err_img); return; } if (step < 4) { step++; renderTimeline(); } }
+function stepBack() { if (step > 1) { step--; renderTimeline(); } }
+
+['sliderScale','sliderRotate','sliderX','sliderY','sliderBrightness','sliderContrast','sliderSaturation'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', updateCalculations);
+});
+
+// ===== Export =====
+function getExportCanvas() {
+  if (cropMode && cropRect.w > 0 && cropRect.h > 0) {
+    const cvs = document.createElement('canvas');
+    cvs.width = Math.round(cropRect.w); cvs.height = Math.round(cropRect.h);
+    const c = cvs.getContext('2d');
+    c.drawImage(canvas, Math.round(cropRect.x), Math.round(cropRect.y), Math.round(cropRect.w), Math.round(cropRect.h), 0, 0, cvs.width, cvs.height);
+    return cvs;
+  }
+  return canvas;
+}
+
+function downloadExport() {
+  const fmt = document.getElementById('exportFormat').value;
+  const cvs = getExportCanvas();
+  if (fmt === 'pdf') { downloadPDF(cvs); return; }
+  const mime = fmt === 'png' ? 'image/png' : 'image/jpeg';
+  const ext = fmt === 'png' ? 'png' : 'jpg';
+  cvs.toBlob((blob) => {
+    if (fmt === 'jpeg') {
+      const targetKb = parseFloat(document.getElementById('inputKb').value);
+      optimizeAndDownload(cvs, targetKb, 'passport_photo.' + ext);
+    } else {
+      triggerDownload(blob, 'passport_photo.' + ext);
+    }
+  }, mime, fmt === 'jpeg' ? 0.92 : undefined);
+}
+
+function optimizeAndDownload(cvs, targetKb, name) {
+  let low = 0.01, high = 1.0, iter = 15, best = null;
+  function loop(n) {
+    const q = (low + high) / 2;
+    cvs.toBlob((blob) => {
+      const s = blob.size / 1024;
+      if (s <= targetKb) { best = blob; low = q; } else { high = q; }
+      if (n < iter) loop(n + 1); else triggerDownload(best || blob, name);
+    }, 'image/jpeg', q);
+  }
+  loop(0);
+}
+
+function downloadPDF(cvs) {
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF('portrait', 'mm', 'a4');
+  const imgData = cvs.toDataURL('image/jpeg', 0.92);
+  const pdfW = 180, pdfH = pdfW * (cvs.height / cvs.width);
+  const x = (210 - pdfW) / 2, y = (297 - pdfH) / 2;
+  pdf.addImage(imgData, 'JPEG', x, y, pdfW, Math.min(pdfH, 280));
+  pdf.save('passport_photo.pdf');
+}
+
+function downloadPrintSheet() {
+  const cols = parseInt(document.getElementById('sheetCols').value) || 4;
+  const rows = parseInt(document.getElementById('sheetRows').value) || 2;
+  const cvs = document.createElement('canvas');
+  cvs.width = 1800; cvs.height = 1200;
+  const c = cvs.getContext('2d');
+  c.fillStyle = '#ffffff'; c.fillRect(0, 0, cvs.width, cvs.height);
+  const sX = 60, sY = 60, gX = 40, gY = 40;
+  const aw = cvs.width - sX * 2 - gX * (cols - 1), iw = aw / cols;
+  const src = getExportCanvas();
+  const ah = cvs.height - sY * 2 - gY * (rows - 1);
+  let ih = iw * (src.height / src.width);
+  if (ih > ah / rows) ih = ah / rows;
+  for (let r = 0; r < rows; r++) for (let c2 = 0; c2 < cols; c2++) {
+    const dx = sX + c2 * (iw + gX), dy = sY + r * (ih + gY);
+    c.drawImage(src, dx, dy, iw, ih);
+    c.strokeStyle = '#94a3b8'; c.lineWidth = 1.5; c.setLineDash([8, 6]); c.strokeRect(dx, dy, iw, ih);
+  }
+  cvs.toBlob((blob) => {
+    const fmt = document.getElementById('exportFormat').value;
+    const ext = fmt === 'png' ? 'png' : 'jpg';
+    const mime = fmt === 'png' ? 'image/png' : 'image/jpeg';
+    if (fmt === 'jpeg') {
+      optimizeAndDownload(cvs, parseFloat(document.getElementById('inputKb').value) * cols * rows, 'print_sheet.' + ext);
+    } else {
+      triggerDownload(blob, 'print_sheet.' + ext);
+    }
+  }, 'image/jpeg', 0.92);
+}
+
+function printPhoto() {
+  const cvs = getExportCanvas();
+  const imgData = cvs.toDataURL('image/png');
+  const w = window.open('');
+  if (!w) { alert(dict[currentLang].popup_block || 'Please allow popups to print.'); return; }
+  w.document.write(`<style>@page{size:portrait;margin:5mm;}body{margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#fff}img{max-width:100%;max-height:100vh;}</style><img src="${imgData}" onload="setTimeout(function(){window.print();window.close()},500)">`);
+  w.document.close();
+}
+
+function triggerDownload(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click();
+  URL.revokeObjectURL(url); document.body.removeChild(a);
+}
+
+// ===== Language Switcher =====
+document.getElementById('langSwitcher').addEventListener('change', (e) => {
+  currentLang = e.target.value;
+  document.documentElement.dir = (currentLang === 'ar') ? 'rtl' : 'ltr';
+  document.documentElement.lang = currentLang;
+  const keys = ['preset','upload2','adjust','export2','preset_title','upload_title','drag','camera','capture','cancel_cam','zoom','rot','x','y','brightness','contrast','saturation','export_title','format','kb','cols','rows','meta','single','sheet','print','audit','back','next','ai-bg','auto-frame','auto-levels'];
+  keys.forEach(id => {
+    const el = document.getElementById('ui-' + id.replace(/_/g, '-').replace(/ /g, '-'));
+    if (el && dict[currentLang][id]) el.innerText = dict[currentLang][id];
+  });
+  const searchEl = document.getElementById('countrySearch');
+  if (searchEl && dict[currentLang].search) searchEl.placeholder = dict[currentLang].search;
+  for (let i = 0; i <= 9; i++) { const el = document.getElementById('lbl-' + i); if (el && dict[currentLang]['l' + i]) el.innerText = dict[currentLang]['l' + i]; }
+  filterCountries();
+});
+
+// ===== Service Worker =====
+if ('serviceWorker' in navigator) {
+  const swCode = `const C='passport-v6';self.addEventListener('install',e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(['/'])).then(()=>self.skipWaiting()))});self.addEventListener('fetch',e=>{e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request)))})`;
+  navigator.serviceWorker.register(URL.createObjectURL(new Blob([swCode], { type: 'application/javascript' }))).catch(() => {});
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  initCountries();
+  const lang = (navigator.language || 'en').slice(0, 2);
+  if (dict[lang]) { document.getElementById('langSwitcher').value = lang; document.getElementById('langSwitcher').dispatchEvent(new Event('change')); }
+});
+</script>
+</body>
+</html>
